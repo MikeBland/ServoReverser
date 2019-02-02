@@ -1,8 +1,23 @@
+/****************************************************************************
+*  Copyright (c) 2019 by Michael Blandford. All rights reserved.
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+*
+****************************************************************************/
+
 
 // Input on PB0 = IO8
 // Reversed output on PB1 = IO9
 // Slow output on PB2 = IO10
-
+// Switch output on PD2 = IO2
 
 // This defines the time, in seconds, for the slow output
 // to travel from one end to the other
@@ -15,6 +30,20 @@
 // This is a default time used at startup
 // The actual time measured between input pulses is then used
 #define PULSE_PERIOD				20	// Time between servo pulses in mS
+
+// Switch output setting
+
+// Set this to 1 for the out ON state to be high
+#define SWITCH_ON_LEVEL	1
+
+// Set this to the pulse width (in uS) above which the switch output is ON
+#define SWITCH_POINT		1600
+
+// Set the gap to allow some hysteresis
+// Output will switch at the switch point + GAP when pulse increasing
+// Output will switch at the switch point - GAP when pulse decreasing
+#define SWITCH_GAP			25
+
 
 // Set some clock speed relative values
 #if F_CPU == 20000000L   // 20MHz clock 
@@ -30,6 +59,14 @@
 #endif
 
 #define SLOW_ADJUST					( (SLOW_ADJUST_SCALE * PULSE_PERIOD) / SLOW_RATE )
+
+#if (SWITCH_GAP < 0)
+#undef SWITCH_GAP
+#define SWITCH_GAP			25
+#endif
+
+#define SWITCH_TRIGGER_UP	((SWITCH_POINT+SWITCH_GAP) * SLOW_ADJUST_SCALE)
+#define SWITCH_TRIGGER_DOWN	((SWITCH_POINT-SWITCH_GAP) * SLOW_ADJUST_SCALE)
 
 
 // Input capture on PB0 = IO8
@@ -59,10 +96,18 @@ void setup()
 
 void init()
 {
-	// Pin direction
+	// Pin directions
 	PORTB &= ~0x06 ;		// Outputs low
 	DDRB |= 0x06 ; 			// Set pins as output
 	DDRB &= ~0x01 ;			// Set pin as input
+
+// Switch output default to low	
+	PORTD &= ~0x04 ;
+	DDRD |= 0x04 ;
+// LED output a copy of Switch output
+	PORTB &= ~0x20 ;
+	DDRB|= 0x20 ;
+
   // Timer1
   TCCR1A = 0x00 ;    //Init.
   TCCR1B = 0xC1 ;    // I/p noise cancel, rising edge, Clock/1
@@ -143,6 +188,27 @@ void capture()
 		CLEAR_TIMERB_INTERRUPT() ;
 		ENABLE_TIMERB_INTERRUPT() ;
   	sei() ;
+		// Now set the switch output
+		if ( ServoPulse > SWITCH_TRIGGER_UP )
+		{
+#if SWITCH_ON_LEVEL
+			PORTD |= 0x04 ;
+			PORTB |= 0x20 ;
+#else
+			PORTD &= ~0x04 ;
+			PORTB &= ~0x20 ;
+#endif
+		}
+		if ( ServoPulse < SWITCH_TRIGGER_DOWN )
+		{
+#if SWITCH_ON_LEVEL
+			PORTD &= ~0x04 ;
+			PORTB &= ~0x20 ;
+#else
+			PORTD |= 0x04 ;
+			PORTB |= 0x20 ;
+#endif
+		}
 	}
 	else
 	{
